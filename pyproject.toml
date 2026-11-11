@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onec77-md-mcp"
+dynamic = ["version"]
+description = "MCP-сервер метаданных конфигурации 1С:Предприятие 7.7 (чтение 1Cv7.MD напрямую)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Andrey" }]
+keywords = ["1c", "1c77", "metadata", "mcp", "mcp-server"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "mcp>=2.3.0",
+    "olefile>=0.47",
+]
+
+[project.scripts]
+onec77-md = "onec77_md.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { attr = "onec77_md.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
