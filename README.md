@@ -69,7 +69,7 @@ onec77-md serve                              # MCP-сервер по stdio
 ## Модули и формы
 
 Модули лежат в OLE-стримах `MD Programm text` (raw deflate; в части версий — zlib с заголовком,
-поэтому пробуются оба варианта). На базе Rain это 941 стрим, из них непустых — 457 модулей
+поэтому пробуются оба варианта). На тестовой конфигурации это 941 стрим, из них непустых — 457 модулей
 на 201 667 строк:
 
 | Что | Стрим | Сколько |
@@ -107,7 +107,7 @@ onec77-md serve                              # MCP-сервер по stdio
 ## Индекс
 
 Поиск по модулям идёт через SQLite-индекс: строки модулей складываются в таблицу `lines`,
-поиск — `LIKE` по ней. На Rain это 201 367 строк, 38 МБ, построение 0,6 с, поиск 0,09 с
+поиск — `LIKE` по ней. На тестовой конфигурации это 201 367 строк, 38 МБ, построение 0,6 с, поиск 0,09 с
 (перебор по Python — около 1,5 с).
 
 ```
@@ -123,7 +123,7 @@ onec77-md index            # построить/перестроить
 `md_export(fmt, kind, detail, out_path, inline)` пишет файл в `export/` (или в `out_path`) и
 возвращает путь и размер. Форматы:
 
-| Формат | Что внутри | Размер на Rain |
+| Формат | Что внутри | Размер |
 |---|---|---|
 | `json` | полная модель: объекты, реквизиты, ТЧ, перечисления, формы, метаданные модулей | 1,0 МБ |
 | `md` | справочник по видам: таблицы объектов; `detail=true` — ещё и реквизиты | 49 КБ |
@@ -131,7 +131,7 @@ onec77-md index            # построить/перестроить
 | `sql` | DDL: `SC<id>`, `DH<id>`+`DT<id>`, `RG<id>` с реквизитами | 104 КБ |
 
 `md_audit(rule, limit)` гоняет шесть проверок: `broken_refs`, `unused`, `duplicate_synonyms`,
-`no_forms`, `no_transaction`, `empty`. Результат на базе Rain:
+`no_forms`, `no_transaction`, `empty`. Результат на тестовой конфигурации:
 
 ```
 Битые ссылки — 0
@@ -177,8 +177,8 @@ onec77-md serve                            # MCP-сервер (stdio)
 Без установки, если зависимости лежат в `.deps`:
 
 ```powershell
-$env:ONE77_MD_PATH = 'D:\base\1Cv7.MD'
-python D:\DSH\onec77-md-mcp\run_server.py
+$env:ONE77_MD_PATH = 'C:\Base\1Cv7.MD'
+python C:\Projects\onec77-md-mcp\run_server.py
 ```
 
 `ONE77_MD_PATH` задаёт базу по умолчанию; путь можно передавать в `md_config_info(path=...)`.
@@ -202,12 +202,12 @@ top-level запись `- id: ...` в патче работает только �
       config:
         serverName: onec77md
         transport: stdio
-        command: 'C:\Users\Andrey\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+        command: 'C:\Tools\python.exe'
         args:
-          - 'D:\DSH\onec77-md-mcp\run_server.py'
-        cwd: 'D:\DSH\onec77-md-mcp'
+          - 'C:\Projects\onec77-md-mcp\run_server.py'
+        cwd: 'C:\Projects\onec77-md-mcp'
         env:
-          ONE77_MD_PATH: 'D:\DSH\Projects\Rain\1Cv7.MD'
+          ONE77_MD_PATH: 'C:\Base\1Cv7.MD'
         toolCallTimeoutMs: 120000
 ```
 
@@ -224,9 +224,9 @@ top-level запись `- id: ...` в патче работает только �
 {
   "mcpServers": {
     "onec77md": {
-      "command": "C:\\Users\\Andrey\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\onec77-md.exe",
+      "command": "C:\\Path\\To\\Scripts\\onec77-md.exe",
       "args": ["serve"],
-      "env": { "ONE77_MD_PATH": "D:\\DSH\\Projects\\Rain\\1Cv7.MD" }
+      "env": { "ONE77_MD_PATH": "C:\\Base\\1Cv7.MD" }
     }
   }
 }
@@ -238,9 +238,9 @@ top-level запись `- id: ...` в патче работает только �
 {
   "mcpServers": {
     "onec77md": {
-      "command": "C:\\Users\\Andrey\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\python\\python.exe",
-      "args": ["D:\\DSH\\onec77-md-mcp\\run_server.py"],
-      "env": { "ONE77_MD_PATH": "D:\\DSH\\Projects\\Rain\\1Cv7.MD" }
+      "command": "C:\\Tools\\python.exe",
+      "args": ["C:\\Projects\\onec77-md-mcp\\run_server.py"],
+      "env": { "ONE77_MD_PATH": "C:\\Base\\1Cv7.MD" }
     }
   }
 }
@@ -255,7 +255,7 @@ top-level запись `- id: ...` в патче работает только �
    в `MdObject`/`Field`, разрешая ссылки по id таблиц (`B`→справочник, `O`→документ, `E`→перечисление).
 4. `server.py` отдаёт модель через MCP (stdio).
 
-Загрузка базы Rain (671 объект, 16 МБ) занимает ~0.1 с; кэш держится по mtime и размеру файла.
+Загрузка тестовой конфигурации (671 объект, 16 МБ) занимает ~0.1 с; кэш держится по mtime и размеру файла.
 
 ## Тесты
 
