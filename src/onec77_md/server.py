@@ -9,6 +9,8 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 
+from . import __version__
+
 from .formatting import (
     config_summary,
     forms_card,
@@ -34,7 +36,7 @@ log = logging.getLogger("onec77_md")
 
 mcp = MCPServer(
     name="onec77-md",
-    version="0.1.0",
+    version=__version__,
     instructions=(
         "Метаданные конфигурации 1С 7.7: справочники, документы, регистры, перечисления, "
         "константы, журналы, отчёты и обработки — с реквизитами, типами и ссылками. "
