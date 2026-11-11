@@ -50,6 +50,24 @@ class FormLayoutStore:
             self._cache[key] = result
             return result
 
+    def find_handlers(self, name: str, limit: int = 10) -> list[tuple[str, str, str]]:
+        """Ищет элементы форм, чей обработчик ссылается на имя: (form_id, класс, обработчик)."""
+        needle = name.lower()
+        found: list[tuple[str, str, str]] = []
+        with self._lock:
+            self._ensure_open()
+            form_ids = list(self._paths)
+        for form_id in form_ids:
+            layout = self.layout(form_id)
+            if layout is None:
+                continue
+            for control in layout.controls:
+                if needle in control.action.lower():
+                    found.append((form_id, control.cls, control.action))
+                    if len(found) >= limit:
+                        return found
+        return found
+
     def entries(self, form_id: str) -> list[tuple[str, str, str]]:
         key = str(form_id)
         with self._lock:

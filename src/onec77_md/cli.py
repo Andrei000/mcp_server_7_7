@@ -139,6 +139,42 @@ def _cmd_graph(args) -> int:
     return 0
 
 
+def _cmd_rename(args) -> int:
+    from datetime import datetime
+    from pathlib import Path
+
+    from .code.rename import propose_rename, write_patch
+    from .formatting import patch_report
+
+    config = _config(args)
+    changes = propose_rename(config, args.old, args.new)
+    if not changes:
+        print(f"«{args.old}» в коде модулей не встречается.")
+        return 0
+    folder = Path(args.out) if args.out else Path(config.source_path).parent / f"patch-{args.old}-{datetime.now():%Y%m%d-%H%M%S}"
+    diff_path = write_patch(changes, folder)
+    print(patch_report(f"Переименование «{args.old}» → «{args.new}»", changes, diff_path, args.max_lines))
+    return 0
+
+
+def _cmd_replace(args) -> int:
+    from datetime import datetime
+    from pathlib import Path
+
+    from .code.rename import propose_replace, write_patch
+    from .formatting import patch_report
+
+    config = _config(args)
+    changes = propose_replace(config, args.old, args.new, args.whole_word)
+    if not changes:
+        print(f"«{args.old}» в коде модулей не встречается.")
+        return 0
+    folder = Path(args.out) if args.out else Path(config.source_path).parent / f"patch-{datetime.now():%Y%m%d-%H%M%S}"
+    diff_path = write_patch(changes, folder)
+    print(patch_report(f"Замена «{args.old}» → «{args.new}»", changes, diff_path, args.max_lines))
+    return 0
+
+
 def _cmd_index(args) -> int:
     import time
 
@@ -217,6 +253,21 @@ def build_parser() -> argparse.ArgumentParser:
     graph.add_argument("--depth", type=int, default=2)
     graph.add_argument("--max-nodes", dest="max_nodes", type=int, default=300)
     graph.add_argument("--include-builtin", dest="include_builtin", action="store_true")
+
+    rename = sub.add_parser("rename", help="предложить переименование: diff без правки базы")
+    rename.add_argument("old")
+    rename.add_argument("new")
+    rename.add_argument("--path", default=argparse.SUPPRESS)
+    rename.add_argument("--out", default="")
+    rename.add_argument("--max-lines", dest="max_lines", type=int, default=200)
+
+    replace = sub.add_parser("replace", help="предложить замену текста в коде")
+    replace.add_argument("old")
+    replace.add_argument("new")
+    replace.add_argument("--path", default=argparse.SUPPRESS)
+    replace.add_argument("--whole-word", dest="whole_word", action="store_true")
+    replace.add_argument("--out", default="")
+    replace.add_argument("--max-lines", dest="max_lines", type=int, default=200)
     return parser
 
 
@@ -244,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
         "symbols": _cmd_symbols,
         "calls": _cmd_calls,
         "graph": _cmd_graph,
+        "rename": _cmd_rename,
+        "replace": _cmd_replace,
     }
     return handlers[args.command](args)
 

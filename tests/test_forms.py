@@ -90,6 +90,14 @@ class RealFormTest(unittest.TestCase):
         self.assertTrue(entries)
         self.assertTrue(any(e[1] == "Dialog Stream" for e in entries))
 
+    def test_find_handlers(self) -> None:
+        handlers = self.store.find_handlers("ПоискКонтрагента", 5)
+        self.assertTrue(handlers)
+        form_id, cls, action = handlers[0]
+        self.assertEqual(form_id, "1158")
+        self.assertEqual(cls, "BUTTON")
+        self.assertIn("ПоискКонтрагента", action)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -50,6 +50,22 @@ def calls_report(hits: list, name: str) -> str:
     return "\n".join(lines)
 
 
+def patch_report(title: str, changes: list, diff_path=None, max_lines: int = 200) -> str:
+    if not changes:
+        return f"{title}: совпадений в коде не найдено."
+    total = sum(change.count for change in changes)
+    lines = [f"{title}: модулей {len(changes)}, замен {total}"]
+    if diff_path is not None:
+        lines.append(f"Файл: {diff_path}")
+    lines.append("")
+    diff = "".join(change.diff for change in changes)
+    diff_lines = diff.splitlines()
+    lines.extend(diff_lines[:max_lines])
+    if len(diff_lines) > max_lines:
+        lines.append(f"… diff обрезан: всего {len(diff_lines)} строк, полный текст в файле")
+    return "\n".join(lines)
+
+
 def config_summary(config: Config) -> str:
     lines = [
         f"Конфигурация: {config.synonym or config.name}",

@@ -332,6 +332,100 @@ def md_call_graph(
         return f"Ошибка чтения конфигурации: {exc}"
 
 
+@mcp.tool()
+def md_propose_rename(
+    symbol: str,
+    new_name: str,
+    out_dir: str = "",
+    max_lines: int = 200,
+) -> str:
+    """Предлагает переименование символа: unified diff по всем модулям, без изменения базы.
+
+    Заменяются только вхождения в коде — комментарии и строковые литералы не трогаются.
+    Diff и файлы «после» пишутся в export/patch-<имя>/; применяет человек через git apply
+    или вручную в Конфигураторе.
+    """
+    import re as _re
+    from datetime import datetime as _dt
+
+    from .code.rename import propose_rename, write_patch
+    from .formatting import patch_report
+
+    try:
+        target = symbol.strip()
+        new = new_name.strip()
+        if not target or not new:
+            return "Нужны и старое, и новое имя."
+        if not _re.fullmatch(r"[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*", new):
+            return f"«{new}» не похоже на имя символа 1С."
+        if target.lower() == new.lower():
+            return "Старое и новое имя совпадают."
+
+        config = registry.load()
+        from .code.search import find_symbols
+
+        collision = find_symbols(config, new, 1)
+        changes = propose_rename(config, target, new)
+        if not changes:
+            return f"«{target}» в коде модулей не встречается."
+
+        folder = Path(out_dir) if out_dir else (
+            Path(__file__).resolve().parents[2] / "export" / f"patch-{_safe_name(target)}-{_dt.now():%Y%m%d-%H%M%S}"
+        )
+        diff_path = write_patch(changes, folder)
+        report = patch_report(f"Переименование «{target}» → «{new}»", changes, diff_path, max(10, max_lines))
+        if collision:
+            report += f"\n\nВнимание: символ «{new}» уже существует ({collision[0].owner}, строка {collision[0].line})."
+
+        if config.source_kind == "ole":
+            try:
+                handlers = get_store(config.source_path).find_handlers(target, 8)
+            except Exception:  # noqa: BLE001 - предупреждение не должно ломать патч
+                handlers = []
+            if handlers:
+                report += "\n\nВнимание: на этот символ ссылаются обработчики форм (строки в Dialog Stream)."
+                report += "\nИх нужно поправить отдельно в Конфигураторе:"
+                for form_id, cls, action in handlers:
+                    report += f"\n  - форма {form_id}, {cls}: {action[:80]}"
+        return report
+    except Exception as exc:  # noqa: BLE001
+        return f"Ошибка подготовки правки: {exc}"
+
+
+def _safe_name(name: str) -> str:
+    import re as _re
+
+    return _re.sub(r"[^\w.-]+", "_", name, flags=_re.UNICODE).strip("_") or "symbol"
+
+
+@mcp.tool()
+def md_propose_replace(
+    old: str,
+    new: str,
+    whole_word: bool = False,
+    out_dir: str = "",
+    max_lines: int = 200,
+) -> str:
+    """Предлагает точечную замену текста в коде модулей (только код, без комментариев и строк)."""
+    from datetime import datetime as _dt
+
+    from .code.rename import propose_replace, write_patch
+    from .formatting import patch_report
+
+    try:
+        config = registry.load()
+        changes = propose_replace(config, old, new, whole_word)
+        if not changes:
+            return f"«{old}» в коде модулей не встречается."
+        folder = Path(out_dir) if out_dir else (
+            Path(__file__).resolve().parents[2] / "export" / f"patch-{_safe_name(old)[:20]}-{_dt.now():%Y%m%d-%H%M%S}"
+        )
+        diff_path = write_patch(changes, folder)
+        return patch_report(f"Замена «{old}» → «{new}»", changes, diff_path, max(10, max_lines))
+    except Exception as exc:  # noqa: BLE001
+        return f"Ошибка подготовки правки: {exc}"
+
+
 def _numbered(text: str, start_line: int, max_lines: int) -> tuple[list[str], int]:
     lines = text.splitlines()
     total = len(lines)
