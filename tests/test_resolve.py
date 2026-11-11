@@ -20,18 +20,20 @@ TEXT_1 = """Процедура Локальная()
 КонецПроцедуры
 """
 
-TEXT_2 = """Процедура Общая()
+TEXT_2 = """Процедура Общая() Экспорт
     Общая();
 КонецПроцедуры
-Процедура Дубликат()
+Процедура Дубликат() Экспорт
 КонецПроцедуры
 """
 
-TEXT_3 = """Процедура Дубликат()
+TEXT_3 = """Процедура Дубликат() Экспорт
 КонецПроцедуры
 """
 
-TEXT_GLOBAL = """Процедура Глобальная()
+TEXT_GLOBAL = """Процедура Глобальная() Экспорт
+КонецПроцедуры
+Процедура Скрытая()
 КонецПроцедуры
 """
 
@@ -77,6 +79,20 @@ class ResolveTest(unittest.TestCase):
         result = self.resolver.resolve("m1", "Дубликат")
         self.assertEqual(result.rule, "ambiguous")
         self.assertIsNone(result.definition)
+
+    def test_global_without_export_is_hidden(self) -> None:
+        # по умолчанию видна только процедура глобального модуля с Экспорт
+        self.assertEqual(self.resolver.resolve("m1", "Скрытая").rule, "none")
+
+    def test_relaxed_policy_makes_everything_global(self) -> None:
+        relaxed, _ = build_resolver(
+            [
+                module("m1", "Модуль формы", TEXT_1),
+                module("g", "Глобальный модуль", TEXT_GLOBAL, "global", "Глобальный модуль"),
+            ],
+            global_requires_export=False,
+        )
+        self.assertEqual(relaxed.resolve("m1", "Скрытая").rule, "global")
 
     def test_unknown(self) -> None:
         result = self.resolver.resolve("m1", "Сообщить")

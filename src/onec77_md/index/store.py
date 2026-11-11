@@ -12,7 +12,15 @@ from ..model.entities import Config
 
 log = logging.getLogger("onec77_md.index")
 
-INDEX_VERSION = 4
+INDEX_VERSION = 5
+
+
+def global_requires_export() -> bool:
+    """По умолчанию процедура глобального модуля видна другим модулям только с Экспорт.
+
+    ONE77_GLOBAL_ANY=1 возвращает прежнее поведение «видно всё».
+    """
+    return os.environ.get("ONE77_GLOBAL_ANY", "") != "1"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -66,9 +74,10 @@ def cache_dir() -> Path:
 
 
 def fingerprint(config: Config) -> str:
-    """Версия схемы входит в отпечаток, иначе старый индекс без символов не перестроится."""
+    """Версия схемы и политика глобального модуля входят в отпечаток."""
     raw = (
-        f"v{INDEX_VERSION}|{config.source_path}|{config.size}|"
+        f"v{INDEX_VERSION}|global_any={int(not global_requires_export())}|"
+        f"{config.source_path}|{config.size}|"
         f"{len(config.objects)}|{len(config.modules)}"
     )
     return sha1(raw.encode("utf-8")).hexdigest()[:16]
@@ -97,7 +106,7 @@ class Index:
         from ..code.resolve import build_resolver
 
         _ = parse_module  # совместимость: парсер используется внутри build_resolver
-        resolver, parsed = build_resolver(config.modules)
+        resolver, parsed = build_resolver(config.modules, global_requires_export())
 
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM lines")

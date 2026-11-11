@@ -41,14 +41,23 @@ def owner_of(module) -> str:
 class Resolver:
     """Индекс объявлений и правило разрешения вызовов."""
 
-    def __init__(self, definitions: dict[str, list[Definition]], by_module: dict[str, dict[str, Definition]]):
+    def __init__(
+        self,
+        definitions: dict[str, list[Definition]],
+        by_module: dict[str, dict[str, Definition]],
+        global_requires_export: bool = True,
+    ):
         self._all = definitions
         self._by_module = by_module
+        self.global_requires_export = global_requires_export
         self._global: dict[str, Definition] = {}
         for items in definitions.values():
             for item in items:
-                if item.module_title == "Глобальный модуль":
-                    self._global.setdefault(item.name.lower(), item)
+                if item.module_title != "Глобальный модуль":
+                    continue
+                if global_requires_export and not item.is_export:
+                    continue  # без Экспорт процедура видна только внутри глобального модуля
+                self._global.setdefault(item.name.lower(), item)
 
     def resolve(self, module_key: str, callee: str) -> Resolution:
         key = callee.lower()
@@ -59,9 +68,12 @@ class Resolver:
         if glob is not None:
             return Resolution(glob, "global")
         candidates = self._all.get(key, [])
-        if len(candidates) == 1:
-            return Resolution(candidates[0], "unique")
-        if candidates:
+        # без Экспорт процедура не видна из чужого модуля, поэтому «единственная» —
+        # это единственная экспортная
+        exported = [item for item in candidates if item.is_export]
+        if len(exported) == 1:
+            return Resolution(exported[0], "unique")
+        if len(exported) > 1:
             return Resolution(None, "ambiguous")
         return Resolution(None, "none")
 
@@ -69,7 +81,7 @@ class Resolver:
         return self._all.get(name.lower(), [])
 
 
-def build_resolver(modules) -> tuple[Resolver, dict[str, ParsedModule]]:
+def build_resolver(modules, global_requires_export: bool = True) -> tuple[Resolver, dict[str, ParsedModule]]:
     """Разбирает модули один раз и строит индекс объявлений."""
     parsed: dict[str, ParsedModule] = {}
     all_defs: dict[str, list[Definition]] = {}
@@ -93,4 +105,4 @@ def build_resolver(modules) -> tuple[Resolver, dict[str, ParsedModule]]:
             local.setdefault(symbol.name.lower(), definition)
         by_module[module.key] = local
 
-    return Resolver(all_defs, by_module), parsed
+    return Resolver(all_defs, by_module, global_requires_export), parsed
