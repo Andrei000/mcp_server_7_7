@@ -46,7 +46,14 @@ def calls_report(hits: list, name: str) -> str:
     lines = [f"Вызовов «{name}»: {len(hits)}"]
     for hit in hits:
         caller = hit.caller or "вне процедуры"
-        lines.append(f"  {hit.owner} [{hit.module_title}] :{hit.line} — {caller}")
+        tail = ""
+        if hit.rule == "ambiguous":
+            tail = "  (вызов неоднозначен: объявлений несколько)"
+        elif hit.target_owner and hit.target_owner != hit.owner:
+            tail = f"  → {hit.target_owner}"
+        elif hit.rule == "unique":
+            tail = "  → единственное объявление"
+        lines.append(f"  {hit.owner} [{hit.module_title}] :{hit.line} — {caller}{tail}")
     return "\n".join(lines)
 
 

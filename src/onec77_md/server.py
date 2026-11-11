@@ -313,19 +313,16 @@ def md_call_graph(
     самой конфигурации — именно их и рефакторят.
     """
     try:
-        from .code.graph import build_tree, lookup_from_index, lookup_from_modules, render
+        from .code.graph import build_tree, provider_for, render
         from .index.store import ensure as ensure_index
 
         config = registry.load()
         mode = "up" if direction.strip().lower() in ("up", "callers", "вверх") else "down"
         level = max(1, min(5, depth))
         index = ensure_index(config)
-        if index is not None:
-            lookup, is_defined = lookup_from_index(index, mode)
-        else:
-            lookup, is_defined = lookup_from_modules(config, mode)
+        provider = provider_for(config, index)
         result = build_tree(
-            name.strip(), mode, level, lookup, is_defined, max(10, max_nodes), include_builtin
+            name.strip(), mode, level, provider, max(10, max_nodes), include_builtin
         )
         return render(result)
     except Exception as exc:  # noqa: BLE001

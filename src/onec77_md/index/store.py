@@ -12,7 +12,7 @@ from ..model.entities import Config
 
 log = logging.getLogger("onec77_md.index")
 
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -45,9 +45,15 @@ CREATE TABLE IF NOT EXISTS calls (
     owner TEXT,
     module_title TEXT,
     module_key TEXT,
-    line INTEGER
+    line INTEGER,
+    target_module_key TEXT,
+    target_line INTEGER,
+    target_owner TEXT,
+    rule TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_calls_target ON calls(target_module_key, target_line);
+CREATE INDEX IF NOT EXISTS idx_calls_source ON calls(module_key, caller COLLATE NOCASE);
 """
 
 
@@ -85,7 +91,13 @@ class Index:
             self.conn.close()
 
     def build(self, config: Config) -> None:
+        import re as _re
+
         from ..code.parser import parse_module
+        from ..code.resolve import build_resolver
+
+        _ = parse_module  # совместимость: парсер используется внутри build_resolver
+        resolver, parsed = build_resolver(config.modules)
 
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM lines")
@@ -112,7 +124,7 @@ class Index:
                     for o in config.objects
                 ],
             )
-            self._insert_symbols(config, parse_module)
+            self._insert_code(config, parsed, resolver)
             self.conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('fingerprint', ?)",
                 (fingerprint(config),),
@@ -122,17 +134,17 @@ class Index:
                 (str(len(rows)),),
             )
 
-    def _insert_symbols(self, config: Config, parse_module) -> None:
+    def _insert_code(self, config: Config, parsed, resolver) -> None:
         symbol_rows = []
         call_rows = []
         for module in config.modules:
+            result = parsed[module.key]
             owner = (
                 "Глобальный модуль"
                 if module.owner_kind == "global"
                 else f"{module.owner_name}"
             )
-            parsed = parse_module(module.text)
-            for symbol in (*parsed.procedures, *parsed.variables):
+            for symbol in (*result.procedures, *result.variables):
                 symbol_rows.append(
                     (
                         symbol.name,
@@ -146,9 +158,22 @@ class Index:
                         1 if symbol.is_export else 0,
                     )
                 )
-            for call in parsed.calls:
+            for call in result.calls:
+                resolution = resolver.resolve(module.key, call.callee)
+                target = resolution.definition
                 call_rows.append(
-                    (call.caller, call.callee, owner, module.title, module.key, call.line)
+                    (
+                        call.caller,
+                        call.callee,
+                        owner,
+                        module.title,
+                        module.key,
+                        call.line,
+                        target.module_key if target else None,
+                        target.line if target else None,
+                        target.owner if target else None,
+                        resolution.rule,
+                    )
                 )
         self.conn.executemany(
             "INSERT INTO symbols (name, kind, owner, module_title, module_key, line, end_line, params, is_export) "
@@ -156,7 +181,8 @@ class Index:
             symbol_rows,
         )
         self.conn.executemany(
-            "INSERT INTO calls (caller, callee, owner, module_title, module_key, line) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO calls (caller, callee, owner, module_title, module_key, line, "
+            "target_module_key, target_line, target_owner, rule) VALUES (?,?,?,?,?,?,?,?,?,?)",
             call_rows,
         )
 
@@ -192,9 +218,39 @@ class Index:
     def find_calls(self, name: str, limit: int) -> list[tuple]:
         with self.lock:
             return self.conn.execute(
-                "SELECT caller, owner, module_title, line FROM calls "
+                "SELECT caller, owner, module_title, line, target_owner, rule FROM calls "
                 "WHERE callee = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
                 (name, limit),
+            ).fetchall()
+
+    def definitions(self, name: str, limit: int) -> list[tuple]:
+        """Объявления символа: (owner, module_title, module_key, line, kind, params, is_export)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT owner, module_title, module_key, line, kind, params, is_export FROM symbols "
+                "WHERE name = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
+                (name, limit),
+            ).fetchall()
+
+    def calls_from(self, module_key: str, caller: str, limit: int) -> list[tuple]:
+        """Вызовы внутри объявления: (callee, owner, module_title, target_key, target_line, target_owner)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT callee, owner, module_title, target_module_key, target_line, target_owner "
+                "FROM calls WHERE module_key = ? AND caller = ? COLLATE NOCASE LIMIT ?",
+                (module_key, caller, limit),
+            ).fetchall()
+
+    def calls_to(self, module_key: str, line: int, limit: int) -> list[tuple]:
+        """Кто вызывает объявление: (caller, owner, module_title, src_module, definition_line)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT c.caller, c.owner, c.module_title, c.module_key, COALESCE(s.line, c.line) "
+                "FROM calls c "
+                "LEFT JOIN symbols s ON s.module_key = c.module_key AND s.name = c.caller COLLATE NOCASE "
+                "WHERE c.target_module_key = ? AND c.target_line = ? "
+                "ORDER BY c.owner, c.line LIMIT ?",
+                (module_key, line, limit),
             ).fetchall()
 
     def callers_of(self, name: str, limit: int) -> list[tuple]:

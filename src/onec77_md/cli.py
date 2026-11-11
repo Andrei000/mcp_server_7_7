@@ -116,22 +116,17 @@ def _cmd_calls(args) -> int:
 
 
 def _cmd_graph(args) -> int:
-    from .code.graph import build_tree, lookup_from_index, lookup_from_modules, render
+    from .code.graph import build_tree, provider_for, render
     from .index.store import ensure
 
     config = _config(args)
     mode = "up" if args.direction.lower() in ("up", "callers", "вверх") else "down"
-    index = ensure(config)
-    if index is not None:
-        lookup, is_defined = lookup_from_index(index, mode)
-    else:
-        lookup, is_defined = lookup_from_modules(config, mode)
+    provider = provider_for(config, ensure(config))
     result = build_tree(
         args.name,
         mode,
         max(1, min(5, args.depth)),
-        lookup,
-        is_defined,
+        provider,
         args.max_nodes,
         args.include_builtin,
     )

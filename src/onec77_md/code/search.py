@@ -26,6 +26,8 @@ class CallHit:
     owner: str
     module_title: str
     line: int
+    target_owner: str = ""
+    rule: str = ""
 
 
 def find_symbols(config: Config, name: str, limit: int = 20) -> list[SymbolHit]:
@@ -74,7 +76,17 @@ def find_calls(config: Config, name: str, limit: int = 30) -> list[CallHit]:
     index = ensure(config)
     if index is not None:
         rows = index.find_calls(name, limit)
-        return [CallHit(caller=row[0], owner=row[1], module_title=row[2], line=row[3]) for row in rows]
+        return [
+            CallHit(
+                caller=row[0],
+                owner=row[1],
+                module_title=row[2],
+                line=row[3],
+                target_owner=row[4] or "",
+                rule=row[5] or "",
+            )
+            for row in rows
+        ]
 
     needle = name.lower()
     hits: list[CallHit] = []
