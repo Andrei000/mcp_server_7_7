@@ -197,6 +197,31 @@ class Index:
                 (name, limit),
             ).fetchall()
 
+    def callers_of(self, name: str, limit: int) -> list[tuple]:
+        """Кто вызывает: (caller, owner, module_title, line)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT caller, owner, module_title, line FROM calls "
+                "WHERE callee = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
+                (name, limit),
+            ).fetchall()
+
+    def callees_of(self, name: str, limit: int) -> list[tuple]:
+        """Кого вызывает: (callee, owner, module_title, line)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT callee, owner, module_title, line FROM calls "
+                "WHERE caller = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
+                (name, limit),
+            ).fetchall()
+
+    def has_symbol(self, name: str) -> bool:
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT 1 FROM symbols WHERE name = ? COLLATE NOCASE LIMIT 1", (name,)
+            ).fetchone()
+            return row is not None
+
     def count_symbols(self) -> int:
         with self.lock:
             return int(self.conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0])

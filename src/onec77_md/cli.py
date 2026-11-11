@@ -115,6 +115,30 @@ def _cmd_calls(args) -> int:
     return 0
 
 
+def _cmd_graph(args) -> int:
+    from .code.graph import build_tree, lookup_from_index, lookup_from_modules, render
+    from .index.store import ensure
+
+    config = _config(args)
+    mode = "up" if args.direction.lower() in ("up", "callers", "вверх") else "down"
+    index = ensure(config)
+    if index is not None:
+        lookup, is_defined = lookup_from_index(index, mode)
+    else:
+        lookup, is_defined = lookup_from_modules(config, mode)
+    result = build_tree(
+        args.name,
+        mode,
+        max(1, min(5, args.depth)),
+        lookup,
+        is_defined,
+        args.max_nodes,
+        args.include_builtin,
+    )
+    print(render(result))
+    return 0
+
+
 def _cmd_index(args) -> int:
     import time
 
@@ -185,6 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
     calls.add_argument("name")
     calls.add_argument("--path", default=argparse.SUPPRESS)
     calls.add_argument("--limit", type=int, default=30)
+
+    graph = sub.add_parser("graph", help="граф вызовов символа")
+    graph.add_argument("name")
+    graph.add_argument("--path", default=argparse.SUPPRESS)
+    graph.add_argument("--direction", default="down", choices=["down", "up"])
+    graph.add_argument("--depth", type=int, default=2)
+    graph.add_argument("--max-nodes", dest="max_nodes", type=int, default=300)
+    graph.add_argument("--include-builtin", dest="include_builtin", action="store_true")
     return parser
 
 
@@ -211,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         "index": _cmd_index,
         "symbols": _cmd_symbols,
         "calls": _cmd_calls,
+        "graph": _cmd_graph,
     }
     return handlers[args.command](args)
 

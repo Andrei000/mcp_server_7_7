@@ -298,6 +298,40 @@ def md_find_calls(name: str, limit: int = 30) -> str:
         return f"Ошибка чтения конфигурации: {exc}"
 
 
+@mcp.tool()
+def md_call_graph(
+    name: str,
+    direction: str = "down",
+    depth: int = 2,
+    max_nodes: int = 300,
+    include_builtin: bool = False,
+) -> str:
+    """Граф вызовов: down — кого вызывает символ, up — кто вызывает его (рекурсивно).
+
+    depth ограничен 1–5. include_builtin=false по умолчанию: платформенные методы
+    (Сообщить, СоздатьОбъект) отбрасываются, чтобы в дереве остались только символы
+    самой конфигурации — именно их и рефакторят.
+    """
+    try:
+        from .code.graph import build_tree, lookup_from_index, lookup_from_modules, render
+        from .index.store import ensure as ensure_index
+
+        config = registry.load()
+        mode = "up" if direction.strip().lower() in ("up", "callers", "вверх") else "down"
+        level = max(1, min(5, depth))
+        index = ensure_index(config)
+        if index is not None:
+            lookup, is_defined = lookup_from_index(index, mode)
+        else:
+            lookup, is_defined = lookup_from_modules(config, mode)
+        result = build_tree(
+            name.strip(), mode, level, lookup, is_defined, max(10, max_nodes), include_builtin
+        )
+        return render(result)
+    except Exception as exc:  # noqa: BLE001
+        return f"Ошибка чтения конфигурации: {exc}"
+
+
 def _numbered(text: str, start_line: int, max_lines: int) -> tuple[list[str], int]:
     lines = text.splitlines()
     total = len(lines)
