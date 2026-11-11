@@ -97,6 +97,24 @@ def _cmd_audit(args) -> int:
     return 0
 
 
+def _cmd_symbols(args) -> int:
+    from .code.search import find_symbols
+    from .formatting import symbols_report
+
+    config = _config(args)
+    print(symbols_report(find_symbols(config, args.name, args.limit), args.name))
+    return 0
+
+
+def _cmd_calls(args) -> int:
+    from .code.search import find_calls
+    from .formatting import calls_report
+
+    config = _config(args)
+    print(calls_report(find_calls(config, args.name, args.limit), args.name))
+    return 0
+
+
 def _cmd_index(args) -> int:
     import time
 
@@ -157,6 +175,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     index = sub.add_parser("index", help="построить SQLite-индекс для поиска по модулям")
     index.add_argument("--path", default=argparse.SUPPRESS)
+
+    symbols = sub.add_parser("symbols", help="где объявлена процедура/функция/переменная")
+    symbols.add_argument("name")
+    symbols.add_argument("--path", default=argparse.SUPPRESS)
+    symbols.add_argument("--limit", type=int, default=20)
+
+    calls = sub.add_parser("calls", help="настоящие вызовы символа без комментариев")
+    calls.add_argument("name")
+    calls.add_argument("--path", default=argparse.SUPPRESS)
+    calls.add_argument("--limit", type=int, default=30)
     return parser
 
 
@@ -181,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         "export": _cmd_export,
         "audit": _cmd_audit,
         "index": _cmd_index,
+        "symbols": _cmd_symbols,
+        "calls": _cmd_calls,
     }
     return handlers[args.command](args)
 

@@ -266,6 +266,38 @@ def md_audit(rule: str = "", limit: int = 20) -> str:
         return f"Ошибка аудита: {exc}"
 
 
+@mcp.tool()
+def md_find_symbol(name: str, limit: int = 20) -> str:
+    """Где объявлена процедура, функция или переменная — точное имя, без подстрок.
+
+    Комментарии и строковые литералы не учитываются, поэтому `// Имя` в выдачу не попадёт.
+    """
+    try:
+        from .code.search import find_symbols
+        from .formatting import symbols_report
+
+        hits = find_symbols(registry.load(), name.strip(), max(1, limit))
+        return symbols_report(hits, name.strip())
+    except Exception as exc:  # noqa: BLE001
+        return f"Ошибка чтения конфигурации: {exc}"
+
+
+@mcp.tool()
+def md_find_calls(name: str, limit: int = 30) -> str:
+    """Все настоящие вызовы символа с указанием вызывающей процедуры и строки.
+
+    В отличие от md_search_modules не показывает комментарии и строковые литералы.
+    """
+    try:
+        from .code.search import find_calls
+        from .formatting import calls_report
+
+        hits = find_calls(registry.load(), name.strip(), max(1, limit))
+        return calls_report(hits, name.strip())
+    except Exception as exc:  # noqa: BLE001
+        return f"Ошибка чтения конфигурации: {exc}"
+
+
 def _numbered(text: str, start_line: int, max_lines: int) -> tuple[list[str], int]:
     lines = text.splitlines()
     total = len(lines)

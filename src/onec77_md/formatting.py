@@ -22,6 +22,34 @@ def human_size(size: int) -> str:
     return f"{size} Б"
 
 
+def symbols_report(hits: list, name: str) -> str:
+    if not hits:
+        return f"Символ «{name}» не найден (точное совпадение, без учёта регистра)."
+    kinds = {"procedure": "Процедура", "function": "Функция", "variable": "Переменная"}
+    lines = [f"Объявлений «{name}»: {len(hits)}"]
+    for hit in hits:
+        kind = kinds.get(hit.kind, hit.kind)
+        if hit.kind == "variable":
+            signature = hit.name
+        else:
+            signature = f"{hit.name}({hit.params})"
+        export = " Экспорт" if hit.is_export else ""
+        span = f":{hit.line}" + (f"–{hit.end_line}" if hit.end_line and hit.end_line != hit.line else "")
+        lines.append(f"  {kind} {signature}{export}")
+        lines.append(f"      {hit.owner} [{hit.module_title}] {span}")
+    return "\n".join(lines)
+
+
+def calls_report(hits: list, name: str) -> str:
+    if not hits:
+        return f"Вызовов «{name}» не найдено (комментарии и строковые литералы не учитываются)."
+    lines = [f"Вызовов «{name}»: {len(hits)}"]
+    for hit in hits:
+        caller = hit.caller or "вне процедуры"
+        lines.append(f"  {hit.owner} [{hit.module_title}] :{hit.line} — {caller}")
+    return "\n".join(lines)
+
+
 def config_summary(config: Config) -> str:
     lines = [
         f"Конфигурация: {config.synonym or config.name}",

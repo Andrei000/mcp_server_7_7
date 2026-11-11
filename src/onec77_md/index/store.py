@@ -25,6 +25,27 @@ CREATE INDEX IF NOT EXISTS idx_lines_module ON lines(module_key);
 CREATE TABLE IF NOT EXISTS objects (
     kind TEXT, obj_id TEXT, name TEXT, synonym TEXT, fields INTEGER, tabular INTEGER
 );
+CREATE TABLE IF NOT EXISTS symbols (
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    owner TEXT,
+    module_title TEXT,
+    module_key TEXT,
+    line INTEGER,
+    end_line INTEGER,
+    params TEXT,
+    is_export INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS calls (
+    caller TEXT,
+    callee TEXT NOT NULL,
+    owner TEXT,
+    module_title TEXT,
+    module_key TEXT,
+    line INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee COLLATE NOCASE);
 """
 
 
@@ -58,9 +79,13 @@ class Index:
             self.conn.close()
 
     def build(self, config: Config) -> None:
+        from ..code.parser import parse_module
+
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM lines")
             self.conn.execute("DELETE FROM objects")
+            self.conn.execute("DELETE FROM symbols")
+            self.conn.execute("DELETE FROM calls")
             rows = []
             for module in config.modules:
                 owner = (
@@ -81,6 +106,7 @@ class Index:
                     for o in config.objects
                 ],
             )
+            self._insert_symbols(config, parse_module)
             self.conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('fingerprint', ?)",
                 (fingerprint(config),),
@@ -89,6 +115,44 @@ class Index:
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('built_rows', ?)",
                 (str(len(rows)),),
             )
+
+    def _insert_symbols(self, config: Config, parse_module) -> None:
+        symbol_rows = []
+        call_rows = []
+        for module in config.modules:
+            owner = (
+                "Глобальный модуль"
+                if module.owner_kind == "global"
+                else f"{module.owner_name}"
+            )
+            parsed = parse_module(module.text)
+            for symbol in (*parsed.procedures, *parsed.variables):
+                symbol_rows.append(
+                    (
+                        symbol.name,
+                        symbol.kind,
+                        owner,
+                        module.title,
+                        module.key,
+                        symbol.line,
+                        symbol.end_line,
+                        ", ".join(symbol.params),
+                        1 if symbol.is_export else 0,
+                    )
+                )
+            for call in parsed.calls:
+                call_rows.append(
+                    (call.caller, call.callee, owner, module.title, module.key, call.line)
+                )
+        self.conn.executemany(
+            "INSERT INTO symbols (name, kind, owner, module_title, module_key, line, end_line, params, is_export) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            symbol_rows,
+        )
+        self.conn.executemany(
+            "INSERT INTO calls (caller, callee, owner, module_title, module_key, line) VALUES (?,?,?,?,?,?)",
+            call_rows,
+        )
 
     def search_lines(self, query: str, limit: int) -> list[tuple[str, str, int, str]]:
         pattern = f"%{query}%"
@@ -110,6 +174,26 @@ class Index:
                     "SELECT COUNT(*) FROM lines WHERE text LIKE ?", (f"%{query}%",)
                 ).fetchone()[0]
             )
+
+    def find_symbols(self, name: str, limit: int) -> list[tuple]:
+        with self.lock:
+            return self.conn.execute(
+                "SELECT kind, owner, module_title, line, end_line, params, is_export "
+                "FROM symbols WHERE name = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
+                (name, limit),
+            ).fetchall()
+
+    def find_calls(self, name: str, limit: int) -> list[tuple]:
+        with self.lock:
+            return self.conn.execute(
+                "SELECT caller, owner, module_title, line FROM calls "
+                "WHERE callee = ? COLLATE NOCASE ORDER BY owner, line LIMIT ?",
+                (name, limit),
+            ).fetchall()
+
+    def count_symbols(self) -> int:
+        with self.lock:
+            return int(self.conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0])
 
 
 _instances: dict[str, Index] = {}
