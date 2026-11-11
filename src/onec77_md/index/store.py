@@ -12,6 +12,8 @@ from ..model.entities import Config
 
 log = logging.getLogger("onec77_md.index")
 
+INDEX_VERSION = 2
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS lines (
@@ -58,7 +60,11 @@ def cache_dir() -> Path:
 
 
 def fingerprint(config: Config) -> str:
-    raw = f"{config.source_path}|{config.size}|{len(config.objects)}|{len(config.modules)}"
+    """Версия схемы входит в отпечаток, иначе старый индекс без символов не перестроится."""
+    raw = (
+        f"v{INDEX_VERSION}|{config.source_path}|{config.size}|"
+        f"{len(config.objects)}|{len(config.modules)}"
+    )
     return sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
