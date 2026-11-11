@@ -78,6 +78,48 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(calls[0].caller, "МояПроц")
 
 
+class ForwardDeclTest(unittest.TestCase):
+    FORWARD = """Функция Расчёт(Первый, Второй) Далее
+Процедура Подготовка() Далее
+
+Процедура Подготовка()
+    Расчёт(1, 2);
+КонецПроцедуры
+
+Функция Расчёт(Первый, Второй)
+    Возврат Первый + Второй;
+КонецФункции
+"""
+
+    def test_forwards_parsed(self) -> None:
+        parsed = parse_module(self.FORWARD)
+        self.assertEqual([s.name for s in parsed.forwards], ["Расчёт", "Подготовка"])
+        self.assertEqual([s.name for s in parsed.procedures], ["Подготовка", "Расчёт"])
+
+    def test_forwards_are_not_calls(self) -> None:
+        parsed = parse_module(self.FORWARD)
+        call_lines = {call.callee for call in parsed.calls}
+        self.assertIn("Расчёт", call_lines)
+        calls_from_forward = [c for c in parsed.calls if c.line == 1]
+        self.assertEqual(calls_from_forward, [])
+
+    def test_multiline_header(self) -> None:
+        text = (
+            "Функция Длинная(Первый,\n"
+            "                 Второй,\n"
+            "                 Третий = 0) Экспорт\n"
+            "    Возврат Первый;\n"
+            "КонецФункции\n"
+        )
+        parsed = parse_module(text)
+        self.assertEqual(len(parsed.procedures), 1)
+        symbol = parsed.procedures[0]
+        self.assertEqual(symbol.name, "Длинная")
+        self.assertEqual(symbol.params, ["Первый", "Второй", "Третий"])
+        self.assertTrue(symbol.is_export)
+        self.assertEqual(symbol.line, 1)
+
+
 @unittest.skipUnless(REAL_MD.is_file(), "нет реальной базы")
 class RealSymbolsTest(unittest.TestCase):
     @classmethod

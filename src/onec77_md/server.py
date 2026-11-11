@@ -255,10 +255,11 @@ def md_export(
 @mcp.tool()
 def md_audit(rule: str = "", limit: int = 20) -> str:
     """Аудит конфигурации: битые ссылки, неиспользуемые объекты, дубли синонимов,
-    объекты без форм, документы без модуля проведения, объекты без состава.
+    повторные объявления в модулях, объекты без форм, документы без модуля проведения,
+    объекты без состава.
 
-    rule — одна проверка (broken_refs, unused, duplicate_synonyms, no_forms,
-    no_transaction, empty); пусто — все.
+    rule — одна проверка (broken_refs, unused, duplicate_synonyms,
+    duplicate_declarations, no_forms, no_transaction, empty); пусто — все.
     """
     try:
         return run_audit(registry.load(), rule, max(1, limit))

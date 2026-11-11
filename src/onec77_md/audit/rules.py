@@ -85,6 +85,43 @@ def documents_without_transaction(config: Config) -> Finding:
     return Finding("no_transaction", "Документы без модуля проведения", len(samples), sorted(samples))
 
 
+def duplicate_declarations(config: Config) -> Finding:
+    """Две процедуры с одним именем и телом в одном модуле: 7.7 не даёт их различить."""
+    from ..code.parser import parse_module
+
+    samples: list[str] = []
+    for module in config.modules:
+        parsed = parse_module(module.text)
+        by_name: dict[str, list] = {}
+        for symbol in parsed.procedures:
+            by_name.setdefault(symbol.name.lower(), []).append(symbol)
+        owner = "Глобальный модуль" if module.owner_kind == "global" else module.owner_name
+        for items in by_name.values():
+            if len(items) < 2:
+                continue
+            lines = ", ".join(str(item.line) for item in items)
+            samples.append(f"{owner} [{module.title}]: {items[0].name} — строки {lines}")
+    return Finding("duplicate_declarations", "Повторные объявления в модуле", len(samples), sorted(samples))
+
+
+def missing_definitions(config: Config) -> Finding:
+    """Предварительное описание `... Далее` без тела."""
+    from ..code.parser import parse_module
+
+    samples: list[str] = []
+    for module in config.modules:
+        parsed = parse_module(module.text)
+        bodies = {item.name.lower() for item in parsed.procedures}
+        owner = "Глобальный модуль" if module.owner_kind == "global" else module.owner_name
+        for item in parsed.forwards:
+            if item.name.lower() in bodies:
+                continue
+            samples.append(
+                f"{owner} [{module.title}]: {item.name} — объявлена в строке {item.line}, тела нет"
+            )
+    return Finding("missing_definitions", "Объявлено, но не определено", len(samples), sorted(samples))
+
+
 def empty_objects(config: Config) -> Finding:
     # отчёты и обработки описываются формой и модулем, а не реквизитами — их не проверяем
     expected = {"catalog", "document", "register", "enum", "account_chart"}
@@ -101,6 +138,8 @@ ALL_RULES = {
     "broken_refs": broken_refs,
     "unused": None,  # требует предварительно собранных токенов
     "duplicate_synonyms": duplicate_synonyms,
+    "duplicate_declarations": duplicate_declarations,
+    "missing_definitions": missing_definitions,
     "no_forms": objects_without_forms,
     "no_transaction": documents_without_transaction,
     "empty": empty_objects,
@@ -124,7 +163,7 @@ def run_audit(config: Config, rule: str = "", limit: int = 20) -> str:
 
     lines = [f"Аудит конфигурации «{config.synonym or config.name}»", ""]
     problems = [f for f in findings if f.total]
-    if not problems:
+    if not problems and not rule.strip():
         lines.append("Проблем не найдено.")
         return "\n".join(lines)
 

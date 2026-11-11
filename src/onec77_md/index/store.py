@@ -12,7 +12,7 @@ from ..model.entities import Config
 
 log = logging.getLogger("onec77_md.index")
 
-INDEX_VERSION = 3
+INDEX_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);

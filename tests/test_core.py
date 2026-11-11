@@ -130,6 +130,59 @@ class RealBaseTest(unittest.TestCase):
         self.assertTrue(to_mermaid(self.config).startswith("%%"))
         self.assertIn("CREATE TABLE SC", to_sql(self.config))
 
+    def test_no_duplicate_declarations_in_base(self) -> None:
+        from onec77_md.audit.rules import run_audit
+
+        report = run_audit(self.config, "duplicate_declarations", 5)
+        self.assertIn("Повторные объявления в модуле — 0", report)
+
+    def test_no_missing_definitions(self) -> None:
+        from onec77_md.audit.rules import run_audit
+
+        report = run_audit(self.config, "missing_definitions", 5)
+        self.assertIn("Объявлено, но не определено — 0", report)
+
+
+class DuplicateSyntheticTest(unittest.TestCase):
+    def test_two_same_named_procedures(self) -> None:
+        from onec77_md.audit.rules import duplicate_declarations
+        from onec77_md.model.entities import Config, Module
+
+        text = "Процедура Работа()\nКонецПроцедуры\nПроцедура Работа()\nКонецПроцедуры\n"
+        config = Config(name="T", synonym="", source_path="mem", size=0, encoding="utf-8")
+        config.modules = [
+            Module(
+                key="m1",
+                owner_kind="document",
+                owner_id="1",
+                owner_name="Документ1",
+                title="Модуль проведения",
+                text=text,
+            )
+        ]
+        finding = duplicate_declarations(config)
+        self.assertEqual(finding.total, 1)
+        self.assertIn("Работа", finding.samples[0])
+        self.assertIn("строки 1, 3", finding.samples[0])
+
+    def test_no_duplicates(self) -> None:
+        from onec77_md.audit.rules import duplicate_declarations
+        from onec77_md.model.entities import Config, Module
+
+        text = "Процедура Первая()\nКонецПроцедуры\nПроцедура Вторая()\nКонецПроцедуры\n"
+        config = Config(name="T", synonym="", source_path="mem", size=0, encoding="utf-8")
+        config.modules = [
+            Module(
+                key="m1",
+                owner_kind="document",
+                owner_id="1",
+                owner_name="Документ1",
+                title="Модуль проведения",
+                text=text,
+            )
+        ]
+        self.assertEqual(duplicate_declarations(config).total, 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
