@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import onec77_md.bootstrap  # noqa: F401,E402
+from onec77_md.forms.handlers import handler_names  # noqa: E402
 from onec77_md.forms.layout import parse_container, parse_dialog  # noqa: E402
 from onec77_md.forms.store import FormLayoutStore  # noqa: E402
 
@@ -66,14 +67,45 @@ class DialogTest(unittest.TestCase):
         self.assertTrue(layout.error)
 
 
+class HandlerNamesTest(unittest.TestCase):
+    def test_simple(self) -> None:
+        self.assertEqual(handler_names("ПоискКонтрагента()"), ["ПоискКонтрагента"])
+
+    def test_multiple_and_dedup(self) -> None:
+        self.assertEqual(handler_names("Первый(); Второй(); Первый()"), ["Первый", "Второй"])
+
+    def test_system_actions_skipped(self) -> None:
+        self.assertEqual(handler_names("#Закрыть"), [])
+        self.assertEqual(handler_names('ОткрытьФорму("Справочник.Х")'), [])
+
+    def test_empty(self) -> None:
+        self.assertEqual(handler_names(""), [])
+
+
 @unittest.skipUnless(REAL_MD.is_file(), "нет реальной базы")
 class RealFormTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        import os
+        import shutil
+
+        work = ROOT / "tests" / ".work" / "forms-cache"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True)
+        os.environ["ONE77_CACHE_DIR"] = str(work)
         cls.store = FormLayoutStore(REAL_MD)
         from onec77_md.loader import registry
 
         cls.config = registry.load(REAL_MD)
+
+    def test_handler_index(self) -> None:
+        from onec77_md.code.search import find_handlers
+
+        hits = find_handlers(self.config, "ПоискКонтрагента", 5)
+        self.assertTrue(hits)
+        self.assertEqual(hits[0].form_id, "1158")
+        self.assertEqual(hits[0].control, "BUTTON")
+        self.assertIn("Справочник", hits[0].owner)
 
     def test_catalog_form_layout(self) -> None:
         catalog = next(o for o in self.config.of_kind("catalog") if o.name == "Контрагенты")

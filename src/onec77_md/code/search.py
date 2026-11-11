@@ -30,6 +30,22 @@ class CallHit:
     rule: str = ""
 
 
+@dataclass
+class HandlerHit:
+    form_id: str
+    owner: str
+    control: str
+    action: str
+
+
+def find_handlers(config: Config, name: str, limit: int = 50) -> list[HandlerHit]:
+    """Обработчики форм, в строке которых встречается имя процедуры."""
+    index = ensure(config)
+    if index is None:
+        return []
+    return [HandlerHit(*row) for row in index.handlers_of(name, limit)]
+
+
 def find_symbols(config: Config, name: str, limit: int = 20) -> list[SymbolHit]:
     index = ensure(config)
     if index is not None:

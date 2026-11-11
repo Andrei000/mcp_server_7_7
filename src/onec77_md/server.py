@@ -290,11 +290,14 @@ def md_find_calls(name: str, limit: int = 30) -> str:
     В отличие от md_search_modules не показывает комментарии и строковые литералы.
     """
     try:
-        from .code.search import find_calls
-        from .formatting import calls_report
+        from .code.search import find_calls, find_handlers
+        from .formatting import calls_report, handlers_report
 
-        hits = find_calls(registry.load(), name.strip(), max(1, limit))
-        return calls_report(hits, name.strip())
+        config = registry.load()
+        target = name.strip()
+        report = calls_report(find_calls(config, target, max(1, limit)), target)
+        handlers = handlers_report(find_handlers(config, target), target)
+        return report + ("\n\n" + handlers if handlers else "")
     except Exception as exc:  # noqa: BLE001
         return f"Ошибка чтения конфигурации: {exc}"
 
@@ -325,7 +328,15 @@ def md_call_graph(
         result = build_tree(
             name.strip(), mode, level, provider, max(10, max_nodes), include_builtin
         )
-        return render(result)
+        text = render(result)
+        if mode == "up":
+            from .code.search import find_handlers
+            from .formatting import handlers_report
+
+            handlers = handlers_report(find_handlers(config, name.strip()), name.strip())
+            if handlers:
+                text += "\n\n" + handlers
+        return text
     except Exception as exc:  # noqa: BLE001
         return f"Ошибка чтения конфигурации: {exc}"
 
@@ -376,15 +387,23 @@ def md_propose_rename(
             report += f"\n\nВнимание: символ «{new}» уже существует ({collision[0].owner}, строка {collision[0].line})."
 
         if config.source_kind == "ole":
-            try:
-                handlers = get_store(config.source_path).find_handlers(target, 8)
-            except Exception:  # noqa: BLE001 - предупреждение не должно ломать патч
-                handlers = []
+            from .code.search import find_handlers
+
+            handlers = find_handlers(config, target, 50)
             if handlers:
-                report += "\n\nВнимание: на этот символ ссылаются обработчики форм (строки в Dialog Stream)."
-                report += "\nИх нужно поправить отдельно в Конфигураторе:"
-                for form_id, cls, action in handlers:
-                    report += f"\n  - форма {form_id}, {cls}: {action[:80]}"
+                lines = [
+                    f"форма {h.form_id} [{h.owner or '?'}], {h.control}: {h.action}"
+                    for h in handlers
+                ]
+                (folder / "handlers.txt").write_text("\n".join(lines), encoding="utf-8")
+                report += (
+                    f"\n\nВнимание: «{target}» вызывается из {len(handlers)} обработчиков форм."
+                    "\nЭти строки лежат в Dialog Stream, патч их не меняет — поправьте в Конфигураторе:"
+                )
+                for line in lines[:20]:
+                    report += f"\n  - {line}"
+                if len(lines) > 20:
+                    report += f"\n  … ещё {len(lines) - 20}, полный список в handlers.txt"
         return report
     except Exception as exc:  # noqa: BLE001
         return f"Ошибка подготовки правки: {exc}"

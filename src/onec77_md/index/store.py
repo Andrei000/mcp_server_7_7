@@ -12,7 +12,7 @@ from ..model.entities import Config
 
 log = logging.getLogger("onec77_md.index")
 
-INDEX_VERSION = 5
+INDEX_VERSION = 6
 
 
 def global_requires_export() -> bool:
@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS calls (
 CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_calls_target ON calls(target_module_key, target_line);
 CREATE INDEX IF NOT EXISTS idx_calls_source ON calls(module_key, caller COLLATE NOCASE);
+CREATE TABLE IF NOT EXISTS form_handlers (
+    form_id TEXT,
+    owner TEXT,
+    control TEXT,
+    action TEXT,
+    symbol TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_handlers_symbol ON form_handlers(symbol COLLATE NOCASE);
 """
 
 
@@ -134,6 +142,8 @@ class Index:
                 ],
             )
             self._insert_code(config, parsed, resolver)
+            self.conn.execute("DELETE FROM form_handlers")
+            self._insert_handlers(config)
             self.conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('fingerprint', ?)",
                 (fingerprint(config),),
@@ -142,6 +152,42 @@ class Index:
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('built_rows', ?)",
                 (str(len(rows)),),
             )
+
+    def _insert_handlers(self, config: Config) -> None:
+        """Строки обработчиков из форм: то, что иначе не видно в модулях."""
+        from ..forms.handlers import handler_names
+        from ..forms.store import get_store
+        from ..model.entities import kind_label
+
+        if config.source_kind != "ole":
+            return
+        try:
+            store = get_store(config.source_path)
+            rows = []
+            for form_id in store.form_ids():
+                layout = store.layout(form_id)
+                if layout is None:
+                    continue
+                owner_obj = config.by_form_id.get(form_id)
+                owner = f"{kind_label(owner_obj.kind)}.{owner_obj.name}" if owner_obj else ""
+                for control in layout.controls:
+                    for name in handler_names(control.action):
+                        rows.append((form_id, owner, control.cls, control.action[:200], name))
+            self.conn.executemany(
+                "INSERT INTO form_handlers (form_id, owner, control, action, symbol) VALUES (?,?,?,?,?)",
+                rows,
+            )
+        except Exception as exc:  # noqa: BLE001 - формы не должны ломать построение индекса
+            log.warning("Обработчики форм не проиндексированы: %s", exc)
+
+    def handlers_of(self, name: str, limit: int = 50) -> list[tuple]:
+        """Обработчики формы, ссылающиеся на символ: (form_id, owner, control, action)."""
+        with self.lock:
+            return self.conn.execute(
+                "SELECT form_id, owner, control, action FROM form_handlers "
+                "WHERE symbol = ? COLLATE NOCASE ORDER BY owner, form_id LIMIT ?",
+                (name, limit),
+            ).fetchall()
 
     def _insert_code(self, config: Config, parsed, resolver) -> None:
         symbol_rows = []

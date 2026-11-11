@@ -40,6 +40,16 @@ def symbols_report(hits: list, name: str) -> str:
     return "\n".join(lines)
 
 
+def handlers_report(hits: list, name: str) -> str:
+    if not hits:
+        return ""
+    lines = [f"Обработчики форм «{name}»: {len(hits)}"]
+    for hit in hits:
+        owner = hit.owner or "владелец не определён"
+        lines.append(f"  форма {hit.form_id} [{owner}], {hit.control}: {hit.action[:80]}")
+    return "\n".join(lines)
+
+
 def calls_report(hits: list, name: str) -> str:
     if not hits:
         return f"Вызовов «{name}» не найдено (комментарии и строковые литералы не учитываются)."

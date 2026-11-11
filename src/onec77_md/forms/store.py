@@ -50,6 +50,12 @@ class FormLayoutStore:
             self._cache[key] = result
             return result
 
+    def form_ids(self) -> list[str]:
+        """Идентификаторы всех форм, у которых есть Dialog Stream."""
+        with self._lock:
+            self._ensure_open()
+            return list(self._paths)
+
     def find_handlers(self, name: str, limit: int = 10) -> list[tuple[str, str, str]]:
         """Ищет элементы форм, чей обработчик ссылается на имя: (form_id, класс, обработчик)."""
         needle = name.lower()
