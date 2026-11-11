@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 from hashlib import sha1
 from pathlib import Path
 
@@ -47,14 +48,17 @@ def index_path(config: Config) -> Path:
 class Index:
     def __init__(self, path: Path):
         self.path = path
-        self.conn = sqlite3.connect(str(path))
+        # MCP обрабатывает вызовы в разных потоках, поэтому соединение общее и под замком
+        self.conn = sqlite3.connect(str(path), check_same_thread=False)
+        self.lock = threading.Lock()
         self.conn.executescript(SCHEMA)
 
     def close(self) -> None:
-        self.conn.close()
+        with self.lock:
+            self.conn.close()
 
     def build(self, config: Config) -> None:
-        with self.conn:
+        with self.lock, self.conn:
             self.conn.execute("DELETE FROM lines")
             self.conn.execute("DELETE FROM objects")
             rows = []
@@ -88,24 +92,28 @@ class Index:
 
     def search_lines(self, query: str, limit: int) -> list[tuple[str, str, int, str]]:
         pattern = f"%{query}%"
-        cursor = self.conn.execute(
-            "SELECT owner, title, line_no, text FROM lines WHERE text LIKE ? LIMIT ?",
-            (pattern, limit),
-        )
-        return cursor.fetchall()
+        with self.lock:
+            cursor = self.conn.execute(
+                "SELECT owner, title, line_no, text FROM lines WHERE text LIKE ? LIMIT ?",
+                (pattern, limit),
+            )
+            return cursor.fetchall()
 
     def count_lines(self) -> int:
-        return int(self.conn.execute("SELECT COUNT(*) FROM lines").fetchone()[0])
+        with self.lock:
+            return int(self.conn.execute("SELECT COUNT(*) FROM lines").fetchone()[0])
 
     def count_hits(self, query: str) -> int:
-        return int(
-            self.conn.execute(
-                "SELECT COUNT(*) FROM lines WHERE text LIKE ?", (f"%{query}%",)
-            ).fetchone()[0]
-        )
+        with self.lock:
+            return int(
+                self.conn.execute(
+                    "SELECT COUNT(*) FROM lines WHERE text LIKE ?", (f"%{query}%",)
+                ).fetchone()[0]
+            )
 
 
 _instances: dict[str, Index] = {}
+_ensure_lock = threading.Lock()
 
 
 def ensure(config: Config, rebuild: bool = False) -> Index | None:
@@ -113,17 +121,18 @@ def ensure(config: Config, rebuild: bool = False) -> Index | None:
     try:
         path = index_path(config)
         key = str(path)
-        if not rebuild and key in _instances:
-            return _instances[key]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        index = Index(path)
-        stored = index.conn.execute(
-            "SELECT value FROM meta WHERE key='fingerprint'"
-        ).fetchone()
-        if rebuild or stored is None or stored[0] != fingerprint(config):
-            index.build(config)
-        _instances[key] = index
-        return index
+        with _ensure_lock:
+            if not rebuild and key in _instances:
+                return _instances[key]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            index = Index(path)
+            stored = index.conn.execute(
+                "SELECT value FROM meta WHERE key='fingerprint'"
+            ).fetchone()
+            if rebuild or stored is None or stored[0] != fingerprint(config):
+                index.build(config)
+            _instances[key] = index
+            return index
     except Exception as exc:  # noqa: BLE001 - индекс не должен ломать основные инструменты
         log.warning("SQLite-индекс недоступен (%s), поиск пойдёт перебором", exc)
         return None

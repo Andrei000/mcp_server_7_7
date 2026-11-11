@@ -54,6 +54,19 @@ class IndexTest(unittest.TestCase):
         index = ensure(self.config)
         self.assertEqual(index.count_hits("Такого_текста_точно_нет_42"), 0)
 
+    def test_search_from_another_thread(self) -> None:
+        """MCP обрабатывает вызовы в разных потоках — индекс не должен падать."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        ensure(self.config)
+
+        def worker(query: str) -> int:
+            return ensure(self.config).count_hits(query)
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(worker, ["ОбработкаПроведения", "Процедура", "КонецПроцедуры"]))
+        self.assertTrue(all(value > 0 for value in results), results)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
